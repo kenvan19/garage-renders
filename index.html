@@ -73,6 +73,7 @@
     <select id="f-country"><option value="">All countries</option></select>
     <select id="f-decade"><option value="">All decades</option></select>
     <span class="chip" id="toggle-bad" title="Show only entries that didn't parse cleanly">⚠ Issues (0)</span>
+    <span class="chip" id="surprise-btn" title="Pick a random render and open it">🎲 Surprise me</span>
   </div>
 </header>
 
@@ -227,6 +228,15 @@ fAsset.addEventListener('change',()=>{rebuildFacets();render();});
 [q,fMake,fType,fBody,fFamily,fCountry,fDecade].forEach(el=>el.addEventListener('input',render));
 document.getElementById('toggle-bad').addEventListener('click',e=>{
   badOnly=!badOnly;e.target.classList.toggle('on',badOnly);render();
+});
+
+// "Surprise me" — pick a random valid render and open it in the lightbox
+document.getElementById('surprise-btn').addEventListener('click',()=>{
+  const rows=DATA.filter(r=>r.ok);
+  if(!rows.length)return;
+  const idx=Math.floor(Math.random()*rows.length);
+  const r=rows[idx];
+  lbImg.src=r.thumb;lbCap.textContent=capOf(r);lb.classList.add('on');
 });
 
 // Lightbox with arrow-key navigation
