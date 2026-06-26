@@ -150,6 +150,38 @@
   .qz-carousel{display:none;font-size:13px;color:var(--bronze-bright);background:var(--panel2);
     border:1px solid var(--line);border-radius:8px;padding:7px 11px;margin-bottom:10px}
   .qz-carousel.on{display:block}
+  /* end-of-run results / initials / leaderboard (Quiz+ only) */
+  .qz-results{display:none;text-align:center;padding:4px 2px}
+  .qz-results.on{display:block}
+  .qz-results h3{margin:6px 0 2px;color:var(--bronze-bright);font-size:20px}
+  .qz-final{font-size:15px;color:var(--ink);margin-bottom:2px}
+  .qz-final b{color:var(--bronze-bright)}
+  .qz-pct{color:var(--muted);font-size:13px;margin-bottom:14px}
+  .qz-newhigh{color:#cfe8c5;font-weight:600;font-size:13px;margin:8px 0;letter-spacing:.3px}
+  .qz-initials{margin:6px 0 14px}
+  .qz-initials .lbl{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.5px;
+    color:var(--muted);margin-bottom:8px}
+  .qz-initials input{width:140px;text-align:center;text-transform:uppercase;letter-spacing:.5em;
+    font-size:26px;font-weight:700;padding:8px 10px 8px 16px;background:var(--panel2);
+    border:1px solid var(--bronze);color:var(--bronze-bright);border-radius:9px}
+  .qz-board{text-align:left;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:6px}
+  .qz-board-h{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);
+    background:var(--panel2);padding:7px 12px;display:flex;justify-content:space-between}
+  .qz-row{display:grid;grid-template-columns:28px 56px 1fr auto;gap:8px;align-items:center;
+    padding:7px 12px;font-size:14px;border-top:1px solid var(--line)}
+  .qz-row.me{background:#21301c;color:#cfe8c5}
+  .qz-row .rk{color:var(--muted);font-size:12px}
+  .qz-row .ini{font-weight:700;letter-spacing:.15em}
+  .qz-row .sc{font-weight:600;color:var(--bronze-bright)}
+  .qz-row.me .sc{color:#cfe8c5}
+  .qz-row .ctx{color:var(--muted);font-size:11px}
+  .qz-board-empty{padding:12px;color:var(--muted);font-size:13px;text-align:center}
+  .qz-results-foot{display:flex;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap}
+  .qz-results-foot button{background:var(--bronze);border:1px solid var(--bronze);color:#1a1410;
+    font-weight:600;border-radius:9px;padding:8px 16px;font:inherit;font-size:14px;cursor:pointer}
+  .qz-results-foot button:hover{background:var(--bronze-bright);border-color:var(--bronze-bright)}
+  .qz-results-foot button.ghost{background:none;border-color:var(--line);color:var(--muted);font-weight:500}
+  .qz-results-foot button.ghost:hover{border-color:var(--bronze);color:var(--ink);background:none}
 </style>
 </head>
 <body>
@@ -196,12 +228,30 @@
       <span class="qz-score" id="qz-score"></span>
     </div>
     <div class="qz-carousel" id="qz-carousel"></div>
-    <div class="qz-img"><img id="qz-img" src="" alt=""></div>
-    <div class="qz-prompt" id="qz-prompt"></div>
-    <div class="qz-opts" id="qz-opts"></div>
-    <div class="qz-foot">
-      <span class="qz-msg" id="qz-msg"></span>
-      <button class="qz-next" id="qz-next">Next ›</button>
+    <div id="qz-play">
+      <div class="qz-img"><img id="qz-img" src="" alt=""></div>
+      <div class="qz-prompt" id="qz-prompt"></div>
+      <div class="qz-opts" id="qz-opts"></div>
+      <div class="qz-foot">
+        <span class="qz-msg" id="qz-msg"></span>
+        <button class="qz-next" id="qz-next">Next ›</button>
+      </div>
+    </div>
+    <div class="qz-results" id="qz-results">
+      <h3 id="qz-results-title">Run complete!</h3>
+      <div class="qz-final" id="qz-final"></div>
+      <div class="qz-pct" id="qz-pct"></div>
+      <div class="qz-newhigh" id="qz-newhigh" style="display:none">★ New high score! ★</div>
+      <div class="qz-initials" id="qz-initials">
+        <span class="lbl">Enter your initials</span>
+        <input id="qz-ini-input" maxlength="3" placeholder="AAA" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="qz-board" id="qz-board"></div>
+      <div class="qz-results-foot">
+        <button id="qz-save">Save score</button>
+        <button class="ghost" id="qz-again">Play again</button>
+        <button class="ghost" id="qz-done">Done</button>
+      </div>
     </div>
   </div>
 </div>
@@ -557,7 +607,24 @@ let qzDeck=[],qzIdx=0,qzRight=0,qzTotal=0,qzStreak=0,qzLocked=false,qzAnswer='';
 let qzCustom=null;       // {pool:[records], promptText:fn|null} or null for legacy live mode
 let qzCarousel=null;     // {decades:[..], di:0, asked:0, cap:0} or null
 const qzCarouselEl=document.getElementById('qz-carousel');
-const CAROUSEL_CAP=50;
+const CAROUSEL_CAP=50;   // questions per decade in the carousel
+const CUSTOM_CAP=100;    // total questions in a narrowed (non-carousel) Quiz+ run
+
+// ── Local leaderboard state ───────────────────────────────────────────
+// A run that came from Quiz+ (carousel OR narrowed) is "scored": when it ends
+// the player enters 3 initials and the result lands in a per-browser high-score
+// table saved to localStorage. The legacy live-filter quiz is NOT scored.
+//   qzRunCtx: null = unscored (legacy) · else {kind:'Carousel'|'Quiz+', label:str}
+// The board is keyed by run kind so carousel and narrowed scores read clearly
+// side by side. Score is "correct" count; ties break by best percentage.
+let qzRunCtx=null;
+let qzAsked=0;           // questions asked in the CURRENT scored run (drives CUSTOM_CAP)
+let qzPendingSaved=false;// guard so a result is only written once
+const QZ_LB_KEY='garageQuizScores_v1';
+const QZ_LB_MAX=10;      // keep top N
+
+const qzPlayEl=document.getElementById('qz-play');
+const qzResultsEl=document.getElementById('qz-results');
 
 // Records carrying a usable 4-digit year (vehicles + makes), with their decade.
 function decadeOf(r){return r.year&&r.year.length===4?r.year.slice(0,3)+'0s':'';}
@@ -588,6 +655,8 @@ function qzShuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.rand
 function startQuiz(){
   // Legacy live-filter quiz: clear any Quiz+ custom/carousel state first.
   qzCustom=null; qzCarousel=null; qzCarouselEl.classList.remove('on');
+  qzRunCtx=null; qzAsked=0;          // legacy runs are NOT scored
+  showQuizPlay();
   const pool=qzPool();
   if([...new Set(pool.map(quizLabel))].length<2){
     alert('The quiz needs at least 2 different possible answers in the current filters — widen them a bit.');
@@ -607,6 +676,8 @@ function startCustomQuiz(pool){
     alert('That selection has fewer than 2 distinct answers — widen it a bit.');
     return false;
   }
+  qzRunCtx={kind:'Quiz+'}; qzAsked=0;     // scored; capped at CUSTOM_CAP
+  showQuizPlay();
   qzDeck=qzShuffle(deckPool.slice()); qzIdx=0;
   qzRight=0; qzTotal=0; qzStreak=0;
   qzEl.classList.add('on');
@@ -620,6 +691,8 @@ function startCarouselQuiz(pool){
   if(!decades.length){alert('No dated renders in that selection to build a carousel from.');return false;}
   qzCustom={pool:pool};
   qzCarousel={decades:decades,di:0,asked:0,cap:0};
+  qzRunCtx={kind:'Carousel'}; qzAsked=0;   // scored; ends when decades run out
+  showQuizPlay();
   qzRight=0; qzTotal=0; qzStreak=0;
   qzCarouselEl.classList.add('on');
   qzEl.classList.add('on');
@@ -646,18 +719,14 @@ function carouselLoadDecade(){
 }
 function updateScore(){qzScoreEl.textContent=qzTotal?`✓ ${qzRight}/${qzTotal} · streak ${qzStreak}`:'';}
 function nextQuestion(){
+  // ── Non-carousel scored runs end at CUSTOM_CAP questions. ──
+  if(qzRunCtx && !qzCarousel && qzAsked>=CUSTOM_CAP){ finishRun(); return; }
   // ── Carousel sequencing: advance decades, enforce the per-decade cap ──
   if(qzCarousel){
     if(qzCarousel.asked>=qzCarousel.cap){     // this decade is done → next decade
       qzCarousel.di++;
-      if(!carouselLoadDecade()){              // no decades left
-        qzCarouselEl.textContent='Carousel complete! '+(qzTotal?`Final: ${qzRight}/${qzTotal} correct.`:'');
-        qzImg.removeAttribute('src');
-        qzPromptEl.textContent='';
-        qzOpts.innerHTML='';
-        qzMsg.textContent='';
-        qzNext.classList.remove('on');
-        qzLocked=true;
+      if(!carouselLoadDecade()){              // no decades left → run is over
+        finishRun();
         return;
       }
     }
@@ -670,6 +739,12 @@ function nextQuestion(){
   if(qzIdx>=qzDeck.length){qzDeck=qzShuffle(pool.slice());qzIdx=0;}
   if(!qzDeck.length){qzClose();return;}
   const r=qzDeck[qzIdx++];
+  if(qzRunCtx) qzAsked++;            // count questions in a scored run
+  // Narrowed (non-carousel) scored runs get a progress strip too.
+  if(qzRunCtx && !qzCarousel){
+    qzCarouselEl.classList.add('on');
+    qzCarouselEl.textContent=`Question ${qzAsked} of ${CUSTOM_CAP}`;
+  }
   qzAnswer=quizLabel(r);
   // 3 distractors: distinct labels from the same scope, never the answer.
   const others=qzShuffle([...new Set(pool.map(quizLabel))].filter(l=>l!==qzAnswer)).slice(0,3);
@@ -704,18 +779,148 @@ function qzPick(btn){
   qzNext.classList.add('on');
   updateScore();
 }
+
+// ── Local leaderboard (per-browser, localStorage) ─────────────────────
+// Stored shape: [{ini,score,total,pct,kind,ts}], sorted best-first. Wrapped in
+// try/catch so a privacy-mode browser that blocks storage degrades to a
+// session-only board instead of throwing.
+function lbLoad(){
+  try{const raw=localStorage.getItem(QZ_LB_KEY);return raw?JSON.parse(raw):[];}
+  catch(e){return [];}
+}
+function lbSave(list){
+  try{localStorage.setItem(QZ_LB_KEY,JSON.stringify(list));}catch(e){/* ignore */}
+}
+// Rank order: higher score first, then higher percentage, then older (earlier ts).
+function lbRank(a,b){ return b.score-a.score || b.pct-a.pct || a.ts-b.ts; }
+// Would this score make the top N? (used to flash "New high score!")
+function lbQualifies(score){
+  const list=lbLoad();
+  if(list.length<QZ_LB_MAX) return true;
+  const worst=list[list.length-1];
+  return score>worst.score;
+}
+
+let qzFinal={score:0,total:0,pct:0,kind:''};   // the just-finished run, awaiting save
+
+// Switch the quiz box between PLAY view and RESULTS view.
+function showQuizPlay(){
+  qzPlayEl.style.display=''; qzResultsEl.classList.remove('on');
+}
+function showQuizResults(){
+  qzPlayEl.style.display='none'; qzResultsEl.classList.add('on');
+}
+
+// End a scored run: compute the result, show the results panel + leaderboard,
+// and prompt for initials if it cracks the top N.
+function finishRun(){
+  const pct=qzTotal?Math.round(qzRight*100/qzTotal):0;
+  qzFinal={score:qzRight,total:qzTotal,pct:pct,kind:(qzRunCtx&&qzRunCtx.kind)||'Quiz+'};
+  qzPendingSaved=false;
+  qzCarouselEl.classList.remove('on');
+  document.getElementById('qz-results-title').textContent=
+    qzFinal.kind==='Carousel'?'Carousel complete!':'Run complete!';
+  document.getElementById('qz-final').innerHTML=
+    `You got <b>${qzRight}</b> of <b>${qzTotal}</b> right`;
+  document.getElementById('qz-pct').textContent=`${pct}% · ${qzFinal.kind}`;
+  const isHigh=qzTotal>0 && lbQualifies(qzRight);
+  const newhigh=document.getElementById('qz-newhigh');
+  const iniWrap=document.getElementById('qz-initials');
+  const saveBtn=document.getElementById('qz-save');
+  newhigh.style.display=isHigh?'block':'none';
+  // Always let players record a score; the initials box is the arcade ritual.
+  iniWrap.style.display=qzTotal>0?'block':'none';
+  saveBtn.style.display=qzTotal>0?'inline-block':'none';
+  const ini=document.getElementById('qz-ini-input');
+  ini.value=lbLastInitials();           // pre-fill with their last-used initials
+  renderBoard(null);
+  showQuizResults();
+  if(qzTotal>0){ setTimeout(()=>{ini.focus();ini.select();},50); }
+}
+
+// Remember the most recently used initials for convenience.
+function lbLastInitials(){
+  try{return localStorage.getItem(QZ_LB_KEY+'_last')||'';}catch(e){return '';}
+}
+function lbSetLastInitials(v){
+  try{localStorage.setItem(QZ_LB_KEY+'_last',v);}catch(e){}
+}
+
+// Render the leaderboard table; highlightTs marks the row just saved.
+function renderBoard(highlightTs){
+  const list=lbLoad().sort(lbRank).slice(0,QZ_LB_MAX);
+  const board=document.getElementById('qz-board');
+  if(!list.length){
+    board.innerHTML='<div class="qz-board-empty">No scores yet — be the first.</div>';
+    return;
+  }
+  const rows=list.map((e,i)=>{
+    const me=highlightTs&&e.ts===highlightTs?' me':'';
+    return `<div class="qz-row${me}">
+      <span class="rk">${i+1}</span>
+      <span class="ini">${(e.ini||'???').toUpperCase()}</span>
+      <span class="sc">${e.score}<span style="color:var(--muted);font-weight:400">/${e.total}</span></span>
+      <span class="ctx">${e.pct}% · ${e.kind||''}</span>
+    </div>`;
+  }).join('');
+  board.innerHTML=`<div class="qz-board-h"><span>High scores</span><span>this browser</span></div>${rows}`;
+}
+
+// Save the pending result under the entered initials.
+function saveScore(){
+  if(qzPendingSaved||qzFinal.total<=0)return;
+  let ini=(document.getElementById('qz-ini-input').value||'').toUpperCase()
+            .replace(/[^A-Z0-9]/g,'').slice(0,3);
+  if(!ini)ini='AAA';
+  lbSetLastInitials(ini);
+  const entry={ini:ini,score:qzFinal.score,total:qzFinal.total,pct:qzFinal.pct,
+               kind:qzFinal.kind,ts:Date.now()};
+  const list=lbLoad(); list.push(entry);
+  list.sort(lbRank);
+  const trimmed=list.slice(0,QZ_LB_MAX);
+  lbSave(trimmed);
+  qzPendingSaved=true;
+  // Hide the entry controls, keep the board with this run highlighted.
+  document.getElementById('qz-initials').style.display='none';
+  document.getElementById('qz-save').style.display='none';
+  document.getElementById('qz-newhigh').style.display='none';
+  renderBoard(entry.ts);
+}
+
 function qzClose(){
   qzEl.classList.remove('on');
-  qzCustom=null; qzCarousel=null; qzCarouselEl.classList.remove('on');
+  qzCustom=null; qzCarousel=null; qzRunCtx=null; qzAsked=0;
+  qzCarouselEl.classList.remove('on');
+  showQuizPlay();                       // reset to play view for next open
 }
 document.getElementById('quiz-btn').addEventListener('click',startQuiz);
 qzNext.addEventListener('click',nextQuestion);
 document.getElementById('qz-x').addEventListener('click',qzClose);
 qzEl.addEventListener('click',e=>{if(e.target===qzEl)qzClose();});
+
+// Results panel buttons.
+document.getElementById('qz-save').addEventListener('click',saveScore);
+document.getElementById('qz-done').addEventListener('click',qzClose);
+document.getElementById('qz-again').addEventListener('click',()=>{
+  // Re-open the Quiz+ builder to start a fresh run (results came from Quiz+).
+  qzClose(); qzcOpen();
+});
+// Initials box: force uppercase alphanumerics, Enter saves.
+const qzIni=document.getElementById('qz-ini-input');
+qzIni.addEventListener('input',()=>{
+  qzIni.value=qzIni.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,3);
+});
+qzIni.addEventListener('keydown',e=>{
+  if(e.key==='Enter'){e.preventDefault();saveScore();}
+  e.stopPropagation();   // don't let 1–4 / Enter reach the quiz key handler
+});
+
 // Keys while the quiz is open: 1–4 pick an option, Enter/Space advance, Esc closes.
+// Suppressed while the results panel is up (so initials entry isn't hijacked).
 document.addEventListener('keydown',e=>{
   if(!qzEl.classList.contains('on'))return;
   if(e.key==='Escape'){qzClose();return;}
+  if(qzResultsEl.classList.contains('on'))return;   // results view owns the keyboard
   if(!qzLocked&&/^[1-4]$/.test(e.key)){const b=qzOpts.children[+e.key-1];if(b)b.click();}
   else if(qzLocked&&(e.key==='Enter'||e.key===' ')){e.preventDefault();nextQuestion();}
 });
