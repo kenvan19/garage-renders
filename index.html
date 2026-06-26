@@ -123,6 +123,11 @@
   .qzc-more-btn:hover{border-color:var(--bronze);color:var(--ink)}
   .qzc-more{display:none;margin-top:12px}
   .qzc-more.on{display:block}
+  .qzc-carousel-toggle{display:flex;align-items:center;gap:9px;margin:14px 0 4px;padding:10px 12px;
+    background:var(--panel2);border:1px solid var(--line);border-radius:9px;cursor:pointer;font-size:14px}
+  .qzc-carousel-toggle:hover{border-color:var(--bronze)}
+  .qzc-carousel-toggle input{margin:0;width:auto;flex:none}
+  .qzc-carousel-toggle b{color:var(--bronze-bright)}
   .qzc-grp{margin-bottom:12px}
   .qzc-grp summary{cursor:pointer;font-weight:600;font-size:13px;padding:8px 10px;background:var(--panel2);
     border:1px solid var(--line);border-radius:8px;list-style:none;-webkit-tap-highlight-color:transparent}
@@ -260,28 +265,20 @@
   <div class="qzc-box">
     <span class="x" id="qzc-x">×</span>
     <div class="qzc-title">🎯 Quiz+ Builder</div>
-    <div class="qzc-sub" id="qzc-sub">Pick a format, then optionally narrow it down or run the full carousel.</div>
+    <div class="qzc-sub" id="qzc-sub">Tick any values across the groups below to shape your quiz. Leave a group untouched to include all of it.</div>
 
     <div class="qzc-section">
-      <div class="qzc-label">Format</div>
-      <div class="qzc-fmt" id="qzc-fmt">
-        <button data-fmt="decade">Decades</button>
-        <button data-fmt="type">Vehicle Type</button>
-        <button data-fmt="make">Manufacturer</button>
-        <button data-fmt="carousel">Decades Carousel</button>
-      </div>
-      <button class="qzc-more-btn" id="qzc-more-btn">＋ More options</button>
-    </div>
-
-    <div class="qzc-more" id="qzc-more">
-      <div class="qzc-label">Narrow it down — tick any values across these groups</div>
       <div id="qzc-groups"></div>
     </div>
 
+    <label class="qzc-carousel-toggle" id="qzc-carousel-toggle">
+      <input type="checkbox" id="qzc-carousel-cb">
+      <span><b>Decades Carousel</b> — play decade by decade instead</span>
+    </label>
     <div class="qzc-carousel-note" id="qzc-carousel-note" style="display:none">
-      <b>Decades Carousel:</b> runs every decade in order, oldest first. Each decade gives you up to
-      <b>50 questions</b> — or all of them if that decade has fewer than 50. Answers and distractors are
-      drawn from within the current decade, so it gets harder as the field tightens.
+      Runs each decade in order, oldest first, up to <b>50 questions</b> per decade (or all of them if a
+      decade has fewer than 50). Answers and distractors come from within the current decade, so it tightens
+      as you go. Any ticks above still apply — e.g. tick a few makes to carousel just those through the years.
     </div>
 
     <div class="qzc-foot">
@@ -697,6 +694,7 @@ function startCarouselQuiz(pool){
   qzCarouselEl.classList.add('on');
   qzEl.classList.add('on');
   if(!carouselLoadDecade()){qzClose();return false;}
+  nextQuestion();        // deal the first card of the first decade
   return true;
 }
 
@@ -926,31 +924,28 @@ document.addEventListener('keydown',e=>{
 });
 
 // ── Quiz+ Builder ─────────────────────────────────────────────────────
-// Opens a config modal: choose a Format (Decades / Vehicle Type / Manufacturer
-// / Decades Carousel), optionally open "More" to tick any number of specific
-// values across several facet groups, then Start. The ticked values define the
-// pool: union WITHIN a group, intersection ACROSS groups (so "bikes made by
-// 15 makes in the 1970s" = Type:Motorcycle ∩ {those 15 makes} ∩ Decade:1970s).
+// Opens a config modal with several facet groups (Decades, Vehicle Types,
+// Manufacturers, Body Styles, Families, Countries). Tick any number of values
+// across any groups; an untouched group means "all of it". The pool is:
+//   union WITHIN a group, intersection ACROSS groups
+// so "bikes by 15 makes in the 1970s" = Type:Motorcycle ∩ {15 makes} ∩ 1970s.
+// A single checkbox flips the whole thing into Decades Carousel mode (walk each
+// decade in order, 50/decade), still honoring whatever else is ticked.
 const qzcEl=document.getElementById('qzc');
 const qzcGroupsEl=document.getElementById('qzc-groups');
-const qzcMoreEl=document.getElementById('qzc-more');
-const qzcMoreBtn=document.getElementById('qzc-more-btn');
 const qzcCarouselNote=document.getElementById('qzc-carousel-note');
+const qzcCarouselCb=document.getElementById('qzc-carousel-cb');
 const qzcTally=document.getElementById('qzc-tally');
 const qzcStart=document.getElementById('qzc-start');
-const qzcSub=document.getElementById('qzc-sub');
-let qzcFormat=null;        // 'decade' | 'type' | 'make' | 'carousel'
 let qzcChecks={};          // {groupKey: Set(values)}
 
 // Quiz+ operates on dated/identifiable renders. Vehicles are the heart of it;
-// makes (badges) also carry years. We build the builder's universe from records
-// that are ok and belong to an asset that can be meaningfully quizzed.
+// makes (badges) also carry years. Universe = ok records of a quizzable asset.
 function qzcUniverse(){return DATA.filter(r=>r.ok && (r.asset==='vehicle'||r.asset==='makes'));}
 
-// The facet groups offered in "More". Each maps to a record field. Decade is
-// derived. Only groups with >1 distinct value are shown (a 1-value group can't
-// narrow anything). Vehicle-only fields simply come up empty for makes and are
-// dropped. 'type' here is the vehicle Type facet (Sedan, Motorcycle, …).
+// Facet groups. Decade is derived; the rest map to record fields. A group with
+// fewer than 2 distinct values is hidden (can't narrow with it). Fields absent
+// for an asset (e.g. body on a badge) simply yield no options there.
 const QZC_GROUPS=[
   {key:'decade', label:'Decades',       get:r=>decadeOf(r)},
   {key:'type',   label:'Vehicle Types', get:r=>r.type},
@@ -965,7 +960,7 @@ function qzcValues(g){
     .sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
 }
 
-// Build the checkbox groups in the More panel (once per open, reflecting data).
+// Build the checkbox groups (once per open, reflecting current data).
 function qzcBuildGroups(){
   qzcGroupsEl.innerHTML='';
   qzcChecks={};
@@ -1017,17 +1012,11 @@ function qzcUpdateGroupCount(key){
   if(el){const n=qzcChecks[key]?qzcChecks[key].size:0;el.textContent=n?`(${n})`:'';}
 }
 
-// Apply the format's base scope + the ticked filters → the quiz pool.
-// Format scope: 'type'/'make'/'decade'/'carousel' all draw from vehicles+makes,
-// but 'type' restricts to records that HAVE a Type (i.e. vehicles), 'decade'/
-// 'carousel' restrict to records that HAVE a decade (dated). Then ticked groups
-// intersect on top. The format is also the axis the carousel walks.
+// Pool = universe ∩ each non-empty ticked group. In carousel mode we also drop
+// undated records (no decade to place them in).
 function qzcBuildPool(){
   let pool=qzcUniverse();
-  if(qzcFormat==='type')   pool=pool.filter(r=>r.type);
-  if(qzcFormat==='make')   pool=pool.filter(r=>r.make);
-  if(qzcFormat==='decade'||qzcFormat==='carousel') pool=pool.filter(r=>decadeOf(r));
-  // intersect with each non-empty ticked group
+  if(qzcCarouselCb.checked) pool=pool.filter(r=>decadeOf(r));
   QZC_GROUPS.forEach(g=>{
     const sel=qzcChecks[g.key];
     if(sel&&sel.size){ pool=pool.filter(r=>sel.has(g.get(r))); }
@@ -1037,10 +1026,9 @@ function qzcBuildPool(){
 
 // Recompute the tally line + enable/disable Start.
 function qzcRefresh(){
-  if(!qzcFormat){qzcTally.textContent='';qzcStart.disabled=true;return;}
   const pool=qzcBuildPool();
   const distinct=[...new Set(pool.map(quizLabel))].length;
-  if(qzcFormat==='carousel'){
+  if(qzcCarouselCb.checked){
     const decs=[...new Set(pool.map(decadeOf).filter(Boolean))].sort();
     const quizzable=decs.filter(d=>{
       const slice=pool.filter(r=>decadeOf(r)===d);
@@ -1055,10 +1043,7 @@ function qzcRefresh(){
 }
 
 function qzcOpen(){
-  qzcFormat=null;
-  [...document.querySelectorAll('#qzc-fmt button')].forEach(b=>b.classList.remove('on'));
-  qzcMoreEl.classList.remove('on');
-  qzcMoreBtn.textContent='＋ More options';
+  qzcCarouselCb.checked=false;
   qzcCarouselNote.style.display='none';
   qzcBuildGroups();
   QZC_GROUPS.forEach(g=>qzcUpdateGroupCount(g.key));
@@ -1067,27 +1052,13 @@ function qzcOpen(){
 }
 function qzcClose(){qzcEl.classList.remove('on');}
 
-// Format buttons.
-document.querySelectorAll('#qzc-fmt button').forEach(b=>{
-  b.addEventListener('click',()=>{
-    qzcFormat=b.dataset.fmt;
-    [...document.querySelectorAll('#qzc-fmt button')].forEach(x=>x.classList.toggle('on',x===b));
-    qzcCarouselNote.style.display=(qzcFormat==='carousel')?'block':'none';
-    // Helpful nudge: for Decade/Type/Make formats, pre-open More so the relevant
-    // group is right there to tick. Carousel doesn't need it but can still use it.
-    qzcRefresh();
-  });
-});
-qzcMoreBtn.addEventListener('click',()=>{
-  const on=qzcMoreEl.classList.toggle('on');
-  qzcMoreBtn.textContent=on?'－ Fewer options':'＋ More options';
+qzcCarouselCb.addEventListener('change',()=>{
+  qzcCarouselNote.style.display=qzcCarouselCb.checked?'block':'none';
+  qzcRefresh();
 });
 qzcStart.addEventListener('click',()=>{
-  if(!qzcFormat)return;
   const pool=qzcBuildPool();
-  let ok;
-  if(qzcFormat==='carousel') ok=startCarouselQuiz(pool);
-  else ok=startCustomQuiz(pool);
+  const ok=qzcCarouselCb.checked?startCarouselQuiz(pool):startCustomQuiz(pool);
   if(ok)qzcClose();
 });
 document.getElementById('quizplus-btn').addEventListener('click',qzcOpen);
