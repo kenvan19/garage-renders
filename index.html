@@ -73,15 +73,15 @@
   #qz{position:fixed;inset:0;background:#000c;display:none;align-items:center;justify-content:center;z-index:60;padding:16px}
   #qz.on{display:flex}
   .qz-box{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:14px;
-    width:min(560px,96vw);max-height:94vh;overflow:auto;padding:14px 16px 16px}
-  .qz-box .x{position:absolute;top:4px;right:10px;color:var(--muted);font-size:26px;cursor:pointer;
-    line-height:1;padding:6px 8px;-webkit-tap-highlight-color:transparent}
+    width:min(960px,96vw);max-height:96vh;overflow:auto;padding:16px 20px 20px}
+  .qz-box .x{position:absolute;top:4px;right:10px;color:var(--muted);font-size:30px;cursor:pointer;
+    line-height:1;padding:8px 12px;-webkit-tap-highlight-color:transparent;z-index:2}
   .qz-box .x:hover{color:var(--ink)}
-  .qz-top{display:flex;align-items:center;justify-content:space-between;padding-right:36px;margin-bottom:10px}
+  .qz-top{display:flex;align-items:center;justify-content:space-between;padding-right:44px;margin-bottom:10px}
   .qz-title{font-weight:700;color:var(--bronze-bright)}
   .qz-score{color:var(--muted);font-size:13px}
   .qz-img{background:#0e0c0a;border:1px solid var(--line);border-radius:10px;overflow:hidden;
-    display:flex;align-items:center;justify-content:center;aspect-ratio:4/3}
+    display:flex;align-items:center;justify-content:center;height:min(64vh,640px)}
   .qz-img img{max-width:100%;max-height:100%;object-fit:contain;display:block}
   .qz-prompt{margin:12px 2px 8px;font-weight:600}
   .qz-opts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -276,8 +276,8 @@
       <span><b>Decades Carousel</b> — play decade by decade instead</span>
     </label>
     <div class="qzc-carousel-note" id="qzc-carousel-note" style="display:none">
-      Runs each decade in order, oldest first, up to <b>50 questions</b> per decade (or all of them if a
-      decade has fewer than 50). Answers and distractors come from within the current decade, so it tightens
+      Runs each decade in order, oldest first, up to <b>25 questions</b> per decade (or all of them if a
+      decade has fewer than 25). Answers and distractors come from within the current decade, so it tightens
       as you go. Any ticks above still apply — e.g. tick a few makes to carousel just those through the years.
     </div>
 
@@ -600,11 +600,11 @@ let qzDeck=[],qzIdx=0,qzRight=0,qzTotal=0,qzStreak=0,qzLocked=false,qzAnswer='';
 // When qzCustom is non-null, the quiz runs against a fixed pool built by the
 // Quiz+ builder (a set of records that survived the chosen format + filters)
 // INSTEAD of the live on-screen filters. The carousel adds a decade sequence
-// on top: it walks an ordered list of decades, each capped at 50 questions.
+// on top: it walks an ordered list of decades, each capped at 25 questions.
 let qzCustom=null;       // {pool:[records], promptText:fn|null} or null for legacy live mode
 let qzCarousel=null;     // {decades:[..], di:0, asked:0, cap:0} or null
 const qzCarouselEl=document.getElementById('qz-carousel');
-const CAROUSEL_CAP=50;   // questions per decade in the carousel
+const CAROUSEL_CAP=25;   // questions per decade in the carousel
 const CUSTOM_CAP=100;    // total questions in a narrowed (non-carousel) Quiz+ run
 
 // ── Local leaderboard state ───────────────────────────────────────────
@@ -682,7 +682,7 @@ function startCustomQuiz(pool){
   return true;
 }
 
-// Quiz+ : Decades Carousel. Walks decades oldest-first, each capped at 50.
+// Quiz+ : Decades Carousel. Walks decades oldest-first, each capped at 25.
 function startCarouselQuiz(pool){
   const decades=[...new Set(pool.map(decadeOf).filter(Boolean))].sort();
   if(!decades.length){alert('No dated renders in that selection to build a carousel from.');return false;}
@@ -894,7 +894,8 @@ function qzClose(){
 document.getElementById('quiz-btn').addEventListener('click',startQuiz);
 qzNext.addEventListener('click',nextQuestion);
 document.getElementById('qz-x').addEventListener('click',qzClose);
-qzEl.addEventListener('click',e=>{if(e.target===qzEl)qzClose();});
+// Closing the quiz is X-ONLY on purpose: a stray tap on the backdrop (easy to do
+// mid-carousel) must NOT bail out of a run. No backdrop-click, no Esc handler here.
 
 // Results panel buttons.
 document.getElementById('qz-save').addEventListener('click',saveScore);
@@ -913,11 +914,11 @@ qzIni.addEventListener('keydown',e=>{
   e.stopPropagation();   // don't let 1–4 / Enter reach the quiz key handler
 });
 
-// Keys while the quiz is open: 1–4 pick an option, Enter/Space advance, Esc closes.
+// Keys while the quiz is open: 1–4 pick an option, Enter/Space advance.
+// Esc does NOT close — closing is X-only so a run can't be lost by accident.
 // Suppressed while the results panel is up (so initials entry isn't hijacked).
 document.addEventListener('keydown',e=>{
   if(!qzEl.classList.contains('on'))return;
-  if(e.key==='Escape'){qzClose();return;}
   if(qzResultsEl.classList.contains('on'))return;   // results view owns the keyboard
   if(!qzLocked&&/^[1-4]$/.test(e.key)){const b=qzOpts.children[+e.key-1];if(b)b.click();}
   else if(qzLocked&&(e.key==='Enter'||e.key===' ')){e.preventDefault();nextQuestion();}
@@ -930,7 +931,7 @@ document.addEventListener('keydown',e=>{
 //   union WITHIN a group, intersection ACROSS groups
 // so "bikes by 15 makes in the 1970s" = Type:Motorcycle ∩ {15 makes} ∩ 1970s.
 // A single checkbox flips the whole thing into Decades Carousel mode (walk each
-// decade in order, 50/decade), still honoring whatever else is ticked.
+// decade in order, 25/decade), still honoring whatever else is ticked.
 const qzcEl=document.getElementById('qzc');
 const qzcGroupsEl=document.getElementById('qzc-groups');
 const qzcCarouselNote=document.getElementById('qzc-carousel-note');
@@ -946,7 +947,11 @@ function qzcUniverse(){return DATA.filter(r=>r.ok && (r.asset==='vehicle'||r.ass
 // Facet groups. Decade is derived; the rest map to record fields. A group with
 // fewer than 2 distinct values is hidden (can't narrow with it). Fields absent
 // for an asset (e.g. body on a badge) simply yield no options there.
+// Asset is first so you can isolate Makes (badges) on their own — ticking just
+// "Makes" gives a pure badge quiz (incl. a badges-only Decades Carousel),
+// which is one of the main reasons Quiz+ exists.
 const QZC_GROUPS=[
+  {key:'asset',  label:'Asset',          get:r=>({vehicle:'Vehicles',makes:'Makes'}[r.asset]||r.asset)},
   {key:'decade', label:'Decades',       get:r=>decadeOf(r)},
   {key:'type',   label:'Vehicle Types', get:r=>r.type},
   {key:'make',   label:'Manufacturers', get:r=>r.make},
