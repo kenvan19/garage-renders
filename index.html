@@ -80,8 +80,21 @@
   .qz-title{font-weight:700;color:var(--bronze-bright)}
   .qz-score{color:var(--muted);font-size:13px}
   .qz-img{background:#0e0c0a;border:1px solid var(--line);border-radius:10px;overflow:hidden;
-    display:flex;align-items:center;justify-content:center;height:min(64vh,640px)}
+    display:flex;align-items:center;justify-content:center;height:min(64vh,640px);position:relative}
   .qz-img img{max-width:100%;max-height:100%;object-fit:contain;display:block}
+  /* While the render is still downloading, hide the (blank/partial) img and
+     show a spinner. At --thumb 2400 these files are big; without this the
+     options could be answered before the picture arrived. */
+  .qz-img.loading img{visibility:hidden}
+  .qz-spin{display:none;position:absolute;inset:0;align-items:center;justify-content:center;
+    flex-direction:column;gap:10px;color:var(--muted);font-size:13px}
+  .qz-img.loading .qz-spin{display:flex}
+  .qz-spin .ring{width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--bronze);
+    border-radius:50%;animation:qzspin .8s linear infinite}
+  @keyframes qzspin{to{transform:rotate(360deg)}}
+  @media(prefers-reduced-motion:reduce){.qz-spin .ring{animation-duration:2.4s}}
+  /* Options stay visibly inert until the image is ready. */
+  .qz-opts.pending{opacity:.45;pointer-events:none}
   .qz-prompt{margin:12px 2px 8px;font-weight:600}
   .qz-opts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   @media(max-width:480px){.qz-opts{grid-template-columns:1fr}}
@@ -143,13 +156,27 @@
   .qzc-grp-tools a:hover{color:var(--bronze-bright);text-decoration:underline}
   .qzc-carousel-note{font-size:13px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);
     border-radius:9px;padding:11px 13px;line-height:1.5}
-  .qzc-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px}
+  .qzc-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;flex-wrap:wrap}
   .qzc-tally{font-size:13px;color:var(--muted)}
   .qzc-tally b{color:var(--ink)}
+  .qzc-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .qzc-start{background:var(--bronze);border:1px solid var(--bronze);color:#1a1410;font-weight:600;
     border-radius:9px;padding:9px 20px;font:inherit;font-size:14px;cursor:pointer}
   .qzc-start:hover:not(:disabled){background:var(--bronze-bright);border-color:var(--bronze-bright)}
   .qzc-start:disabled{opacity:.45;cursor:not-allowed}
+  /* Shared-link arrivals get a bigger, unmissable Start button. */
+  .qzc-start.big{padding:14px 34px;font-size:17px;font-weight:700;letter-spacing:.3px;
+    box-shadow:0 0 0 3px #b5853a33}
+  .qzc-copy{background:none;border:1px solid var(--line);color:var(--muted);border-radius:9px;
+    padding:9px 14px;font:inherit;font-size:13px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .qzc-copy:hover:not(:disabled){border-color:var(--bronze);color:var(--ink)}
+  .qzc-copy:disabled{opacity:.4;cursor:not-allowed}
+  .qzc-copy.done{border-color:#5f9e57;color:#cfe8c5}
+  /* Banner shown when the builder was opened from a shared link. */
+  .qzc-shared{display:none;font-size:13px;color:var(--bronze-bright);background:#2a2114;
+    border:1px solid var(--bronze);border-radius:9px;padding:10px 13px;margin-bottom:12px;line-height:1.45}
+  .qzc-shared.on{display:block}
+  .qzc-shared b{color:var(--ink)}
   /* carousel progress banner inside the quiz box */
   .qz-carousel{display:none;font-size:13px;color:var(--bronze-bright);background:var(--panel2);
     border:1px solid var(--line);border-radius:8px;padding:7px 11px;margin-bottom:10px}
@@ -233,7 +260,10 @@
     </div>
     <div class="qz-carousel" id="qz-carousel"></div>
     <div id="qz-play">
-      <div class="qz-img"><img id="qz-img" src="" alt=""></div>
+      <div class="qz-img" id="qz-imgwrap">
+        <img id="qz-img" src="" alt="">
+        <div class="qz-spin"><div class="ring"></div><span>Loading render…</span></div>
+      </div>
       <div class="qz-prompt" id="qz-prompt"></div>
       <div class="qz-opts" id="qz-opts"></div>
       <div class="qz-foot">
@@ -253,6 +283,7 @@
       <div class="qz-board" id="qz-board"></div>
       <div class="qz-results-foot">
         <button id="qz-save">Save score</button>
+        <button class="ghost" id="qz-copyresult" title="Copy your score to paste back to whoever shared this">📋 Copy result</button>
         <button class="ghost" id="qz-again">Play again</button>
         <button class="ghost" id="qz-done">Done</button>
       </div>
@@ -265,6 +296,11 @@
     <span class="x" id="qzc-x">×</span>
     <div class="qzc-title">🎯 Quiz+ Builder</div>
     <div class="qzc-sub" id="qzc-sub">Tick any values across the groups below to shape your quiz. Leave a group untouched to include all of it.</div>
+
+    <div class="qzc-shared" id="qzc-shared">
+      🔗 <b>Someone shared this quiz with you.</b> It's set up below — hit <b>Start quiz</b> to play,
+      or change any of the ticks first.
+    </div>
 
     <div class="qzc-section">
       <div id="qzc-groups"></div>
@@ -282,7 +318,10 @@
 
     <div class="qzc-foot">
       <span class="qzc-tally" id="qzc-tally"></span>
-      <button class="qzc-start" id="qzc-start" disabled>Start quiz</button>
+      <span class="qzc-actions">
+        <button class="qzc-copy" id="qzc-copy" title="Copy a link that opens this exact quiz setup">🔗 Copy link</button>
+        <button class="qzc-start" id="qzc-start" disabled>Start quiz</button>
+      </span>
     </div>
   </div>
 </div>
@@ -597,6 +636,11 @@ const qzEl=document.getElementById('qz'),qzImg=document.getElementById('qz-img')
       qzScoreEl=document.getElementById('qz-score'),qzMsg=document.getElementById('qz-msg'),
       qzNext=document.getElementById('qz-next');
 let qzDeck=[],qzIdx=0,qzRight=0,qzTotal=0,qzStreak=0,qzLocked=false,qzAnswer='';
+// Guards for async image loading: qzQToken invalidates in-flight loads when the
+// question changes; qzSkips counts consecutive unloadable cards so a broken
+// deploy or dead connection can't spin forever.
+let qzQToken=0, qzSkips=0;
+const QZ_MAX_SKIPS=8;
 
 // ── Quiz+ custom-mode state ───────────────────────────────────────────
 // When qzCustom is non-null, the quiz runs against a fixed pool built by the
@@ -647,7 +691,7 @@ function qzPool(){
     }
     return qzCustom.pool;
   }
-  return DATA.filter(r=>r.ok&&matches(r));
+  return DATA.filter(r=>r.ok&&qzHasImage(r)&&matches(r));
 }
 function qzShuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 
@@ -662,7 +706,7 @@ function startQuiz(){
     return;
   }
   qzDeck=qzShuffle(pool.slice()); qzIdx=0;
-  qzRight=0; qzTotal=0; qzStreak=0;
+  qzRight=0; qzTotal=0; qzStreak=0; qzSkips=0; qzSetLoading(false);
   qzEl.classList.add('on');
   nextQuestion();
 }
@@ -678,7 +722,7 @@ function startCustomQuiz(pool){
   qzRunCtx={kind:'Quiz+'}; qzAsked=0;     // scored; capped at CUSTOM_CAP
   showQuizPlay();
   qzDeck=qzShuffle(deckPool.slice()); qzIdx=0;
-  qzRight=0; qzTotal=0; qzStreak=0;
+  qzRight=0; qzTotal=0; qzStreak=0; qzSkips=0; qzSetLoading(false);
   qzEl.classList.add('on');
   nextQuestion();
   return true;
@@ -692,7 +736,7 @@ function startCarouselQuiz(pool){
   qzCarousel={decades:decades,di:0,asked:0,cap:0};
   qzRunCtx={kind:'Carousel'}; qzAsked=0;   // scored; ends when decades run out
   showQuizPlay();
-  qzRight=0; qzTotal=0; qzStreak=0;
+  qzRight=0; qzTotal=0; qzStreak=0; qzSkips=0; qzSetLoading(false);
   qzCarouselEl.classList.add('on');
   qzEl.classList.add('on');
   if(!carouselLoadDecade()){qzClose();return false;}
@@ -718,6 +762,50 @@ function carouselLoadDecade(){
   return false;        // ran out of decades
 }
 function updateScore(){qzScoreEl.textContent=qzTotal?`✓ ${qzRight}/${qzTotal} · streak ${qzStreak}`:'';}
+
+// ── Quiz image preloading ─────────────────────────────────────────────
+// Renders are served at full --thumb size (2400px in the published build),
+// which is heavy enough that a question could previously appear — and be
+// answered — before its picture arrived. Three defences:
+//   1. Preload the NEXT few cards while the current one is on screen, so by
+//      the time you hit Next the file is already in the browser cache.
+//   2. Gate the options: they stay inert with a spinner until the image is
+//      decoded, so a question is never answerable while invisible.
+//   3. On a genuine load failure, skip the card instead of stalling on it.
+const qzPreloaded=new Map();     // src -> true (loaded ok) | false (failed)
+const QZ_PRELOAD_AHEAD=3;        // how many upcoming cards to warm up
+const qzImgWrap=document.getElementById('qz-imgwrap');
+
+// Warm the cache for one src. Resolves to true/false; results are memoised so
+// a card revisited later (deck reshuffle) doesn't re-download.
+function qzPreload(src){
+  return new Promise(resolve=>{
+    if(!src){resolve(false);return;}
+    if(qzPreloaded.has(src)){resolve(qzPreloaded.get(src));return;}
+    const im=new Image();
+    im.onload =()=>{qzPreloaded.set(src,true); resolve(true);};
+    im.onerror=()=>{qzPreloaded.set(src,false);resolve(false);};
+    im.src=src;
+  });
+}
+// Warm the next N cards in the current deck (fire-and-forget).
+function qzPreloadAhead(){
+  for(let k=0;k<QZ_PRELOAD_AHEAD;k++){
+    const nxt=qzDeck[qzIdx+k];
+    if(nxt&&nxt.thumb)qzPreload(nxt.thumb);
+  }
+}
+// Show/clear the loading state around the quiz image.
+function qzSetLoading(on){
+  qzImgWrap.classList.toggle('loading',on);
+  qzOpts.classList.toggle('pending',on);
+}
+
+// A record is quizzable only if it actually has an image to look at. Parsing
+// cleanly (r.ok) isn't enough — a render whose thumbnail failed to generate
+// has a blank thumb and would be an unanswerable blind guess.
+function qzHasImage(r){return !!(r&&r.thumb);}
+
 function nextQuestion(){
   // ── Non-carousel scored runs end at CUSTOM_CAP questions. ──
   if(qzRunCtx && !qzCarousel && qzAsked>=CUSTOM_CAP){ finishRun(); return; }
@@ -749,7 +837,6 @@ function nextQuestion(){
   // 3 distractors: distinct labels from the same scope, never the answer.
   const others=qzShuffle([...new Set(pool.map(quizLabel))].filter(l=>l!==qzAnswer)).slice(0,3);
   const options=qzShuffle([qzAnswer,...others]);
-  qzImg.src=r.thumb;
   qzPromptEl.textContent=quizPromptText(r.asset);
   qzMsg.textContent='';
   qzNext.classList.remove('on');
@@ -764,6 +851,33 @@ function nextQuestion(){
     qzOpts.appendChild(b);
   });
   updateScore();
+
+  // ── Image gating ────────────────────────────────────────────────────
+  // Options are inert until the picture is decoded. qzQToken guards against a
+  // stale load resolving after the player has already moved on (fast Next
+  // presses, or a slow image landing after the run ended).
+  const token=++qzQToken;
+  qzSetLoading(true);
+  qzPreloadAhead();                 // warm upcoming cards while this one plays
+  qzPreload(r.thumb).then(ok=>{
+    if(token!==qzQToken)return;     // superseded by a newer question
+    if(ok){
+      qzImg.src=r.thumb;
+      qzSkips=0;                    // healthy load — reset the bail-out counter
+      qzSetLoading(false);
+    }else{
+      // Image genuinely unavailable → don't present an unanswerable card.
+      qzSkips++;
+      if(qzRunCtx)qzAsked--;                            // don't burn a question
+      if(qzCarousel)qzCarousel.asked=Math.max(0,qzCarousel.asked-1);
+      if(qzSkips>QZ_MAX_SKIPS){                         // pathological: bail out
+        qzSetLoading(false);
+        qzMsg.textContent='Images aren\u2019t loading — check your connection.';
+        return;
+      }
+      nextQuestion();
+    }
+  });
 }
 function qzPick(btn){
   if(qzLocked)return;
@@ -814,6 +928,8 @@ function showQuizResults(){
 // End a scored run: compute the result, show the results panel + leaderboard,
 // and prompt for initials if it cracks the top N.
 function finishRun(){
+  qzQToken++;                           // a late image must not paint over results
+  qzSetLoading(false);
   const pct=qzTotal?Math.round(qzRight*100/qzTotal):0;
   qzFinal={score:qzRight,total:qzTotal,pct:pct,kind:(qzRunCtx&&qzRunCtx.kind)||'Quiz+'};
   qzPendingSaved=false;
@@ -889,6 +1005,8 @@ function saveScore(){
 
 function qzClose(){
   qzEl.classList.remove('on');
+  qzQToken++;                           // invalidate any in-flight image load
+  qzSetLoading(false);
   qzCustom=null; qzCarousel=null; qzRunCtx=null; qzAsked=0;
   qzCarouselEl.classList.remove('on');
   showQuizPlay();                       // reset to play view for next open
@@ -902,6 +1020,15 @@ document.getElementById('qz-x').addEventListener('click',qzClose);
 // Results panel buttons.
 document.getElementById('qz-save').addEventListener('click',saveScore);
 document.getElementById('qz-done').addEventListener('click',qzClose);
+// Copy a plain-text score line to paste back to whoever shared the quiz.
+// Scores are per-browser (localStorage), so this is how a result travels.
+document.getElementById('qz-copyresult').addEventListener('click',()=>{
+  const ini=((document.getElementById('qz-ini-input').value||'').toUpperCase()
+              .replace(/[^A-Z0-9]/g,'').slice(0,3))||'---';
+  const what=qzRunLabel?' · '+qzRunLabel:'';
+  const line=`${ini} — ${qzFinal.score}/${qzFinal.total} (${qzFinal.pct}%) · ${qzFinal.kind}${what}`;
+  copyText(line,document.getElementById('qz-copyresult'),'✓ Copied');
+});
 document.getElementById('qz-again').addEventListener('click',()=>{
   // Re-open the Quiz+ builder to start a fresh run (results came from Quiz+).
   qzClose(); qzcOpen();
@@ -922,9 +1049,133 @@ qzIni.addEventListener('keydown',e=>{
 document.addEventListener('keydown',e=>{
   if(!qzEl.classList.contains('on'))return;
   if(qzResultsEl.classList.contains('on'))return;   // results view owns the keyboard
-  if(!qzLocked&&/^[1-4]$/.test(e.key)){const b=qzOpts.children[+e.key-1];if(b)b.click();}
+  // Number keys must not answer a question whose image hasn't painted yet.
+  const pending=qzImgWrap.classList.contains('loading');
+  if(!qzLocked&&!pending&&/^[1-4]$/.test(e.key)){const b=qzOpts.children[+e.key-1];if(b)b.click();}
   else if(qzLocked&&(e.key==='Enter'||e.key===' ')){e.preventDefault();nextQuestion();}
 });
+
+// ── Shareable quiz links ──────────────────────────────────────────────
+// The builder's state (ticked values per group + the carousel flag) is encoded
+// into the URL hash, so a link opens the builder pre-filled and ready to start.
+//
+//   #quiz=decade:1930s,1940s;make:Ford,Nash;carousel:1
+//
+// The link encodes the FILTERS, not the images. It plays against whatever the
+// recipient's copy of the gallery contains, so adding renders later changes the
+// question pool — same quiz definition, fresh material. Values are encoded with
+// encodeURIComponent so makes containing spaces/commas survive the round trip.
+const SHARE_SEP_GROUP=';', SHARE_SEP_KV=':', SHARE_SEP_VAL=',';
+
+// Build the hash fragment for the builder's current state. Returns '' when
+// nothing is ticked and carousel is off (i.e. a plain "everything" quiz).
+function qzcEncode(){
+  const parts=[];
+  QZC_GROUPS.forEach(g=>{
+    const sel=qzcChecks[g.key];
+    if(sel&&sel.size){
+      const vals=[...sel].map(encodeURIComponent).join(SHARE_SEP_VAL);
+      parts.push(g.key+SHARE_SEP_KV+vals);
+    }
+  });
+  if(qzcCarouselCb.checked) parts.push('carousel'+SHARE_SEP_KV+'1');
+  return parts.join(SHARE_SEP_GROUP);
+}
+
+// Parse a hash fragment back into {groupKey:[values], carousel:bool}.
+// Unknown keys and values that don't exist in this gallery are ignored, so an
+// older link against a newer gallery degrades instead of breaking.
+function qzcDecode(frag){
+  const out={groups:{},carousel:false};
+  if(!frag)return out;
+  frag.split(SHARE_SEP_GROUP).forEach(chunk=>{
+    const i=chunk.indexOf(SHARE_SEP_KV);
+    if(i<0)return;
+    const key=chunk.slice(0,i), raw=chunk.slice(i+1);
+    if(key==='carousel'){out.carousel=(raw==='1'||raw==='true');return;}
+    if(!QZC_GROUPS.some(g=>g.key===key))return;      // unknown group
+    out.groups[key]=raw.split(SHARE_SEP_VAL).map(v=>{
+      try{return decodeURIComponent(v);}catch(e){return v;}
+    }).filter(Boolean);
+  });
+  return out;
+}
+
+// Full shareable URL for the current builder state (hash stripped and rebuilt).
+function qzcShareURL(){
+  const frag=qzcEncode();
+  const base=location.href.split('#')[0];
+  return frag?base+'#quiz='+frag:base+'#quiz=all';
+}
+
+// Read a shared config out of the current URL, if present.
+function qzcSharedFromURL(){
+  const m=/[#&]quiz=([^&]*)/.exec(location.hash||'');
+  if(!m)return null;
+  return qzcDecode(m[1]==='all'?'':m[1]);
+}
+
+// Tick the builder's checkboxes to match a decoded config. Must run AFTER
+// qzcBuildGroups() so the checkbox elements exist. Values no longer present in
+// the gallery are silently skipped; returns how many ticks were applied.
+function qzcApplyConfig(cfg){
+  let applied=0;
+  qzcCarouselCb.checked=!!cfg.carousel;
+  qzcCarouselNote.style.display=cfg.carousel?'block':'none';
+  Object.keys(cfg.groups||{}).forEach(key=>{
+    if(!qzcChecks[key])return;                       // group hidden (too few values)
+    const want=new Set(cfg.groups[key]);
+    qzcGroupsEl.querySelectorAll('input[type=checkbox]').forEach(cb=>{
+      if(cb.dataset.grp===key&&want.has(cb.value)){
+        cb.checked=true; qzcChecks[key].add(cb.value); applied++;
+        const det=cb.closest('details'); if(det)det.open=true;   // reveal what's ticked
+      }
+    });
+  });
+  QZC_GROUPS.forEach(g=>qzcUpdateGroupCount(g.key));
+  qzcRefresh();
+  return applied;
+}
+
+// Clipboard helper with a fallback for non-secure contexts (file://, plain http),
+// where navigator.clipboard is unavailable. Flashes the button on success.
+function copyText(text,btn,okLabel){
+  const done=()=>{
+    if(!btn)return;
+    const old=btn.textContent;
+    btn.textContent=okLabel||'✓ Copied';
+    btn.classList.add('done');
+    setTimeout(()=>{btn.textContent=old;btn.classList.remove('done');},1600);
+  };
+  const fallback=()=>{
+    try{
+      const ta=document.createElement('textarea');
+      ta.value=text; ta.setAttribute('readonly','');
+      ta.style.position='fixed'; ta.style.opacity='0';
+      document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta); done();
+    }catch(e){ prompt('Copy this:',text); }
+  };
+  if(navigator.clipboard&&window.isSecureContext){
+    navigator.clipboard.writeText(text).then(done).catch(fallback);
+  }else fallback();
+}
+
+// A short human description of the current builder state, e.g. "1930s · Ford,
+// Nash · Carousel" — used in the copyable result line so a score has context.
+function qzcDescribe(){
+  const bits=[];
+  QZC_GROUPS.forEach(g=>{
+    const sel=qzcChecks[g.key];
+    if(sel&&sel.size){
+      const vals=[...sel];
+      bits.push(vals.length<=3?vals.join(', '):vals.length+' '+g.label.toLowerCase());
+    }
+  });
+  if(qzcCarouselCb.checked)bits.push('Carousel');
+  return bits.length?bits.join(' · '):'All renders';
+}
+let qzRunLabel='';   // description captured when a run starts, shown on results
 
 // ── Quiz+ Builder ─────────────────────────────────────────────────────
 // Opens a config modal with several facet groups (Decades, Vehicle Types,
@@ -944,7 +1195,7 @@ let qzcChecks={};          // {groupKey: Set(values)}
 
 // Quiz+ operates on dated/identifiable renders. Vehicles are the heart of it;
 // makes (badges) also carry years. Universe = ok records of a quizzable asset.
-function qzcUniverse(){return DATA.filter(r=>r.ok && (r.asset==='vehicle'||r.asset==='makes'));}
+function qzcUniverse(){return DATA.filter(r=>r.ok && qzHasImage(r) && (r.asset==='vehicle'||r.asset==='makes'));}
 
 // Facet groups. Decade is derived; the rest map to record fields. A group with
 // fewer than 2 distinct values is hidden (can't narrow with it). Fields absent
@@ -990,7 +1241,7 @@ function qzcBuildGroups(){
       const lab=document.createElement('label');
       lab.className='qzc-chk';
       const cb=document.createElement('input');
-      cb.type='checkbox'; cb.value=v;
+      cb.type='checkbox'; cb.value=v; cb.dataset.grp=g.key;
       cb.addEventListener('change',()=>{
         if(cb.checked)qzcChecks[g.key].add(v); else qzcChecks[g.key].delete(v);
         qzcUpdateGroupCount(g.key); qzcRefresh();
@@ -1049,12 +1300,23 @@ function qzcRefresh(){
   }
 }
 
-function qzcOpen(){
+// Open the builder. Pass a decoded config (from a shared link) to pre-fill it;
+// in that case the banner shows and Start is enlarged so it's the obvious move.
+function qzcOpen(sharedCfg){
   qzcCarouselCb.checked=false;
   qzcCarouselNote.style.display='none';
   qzcBuildGroups();
-  QZC_GROUPS.forEach(g=>qzcUpdateGroupCount(g.key));
-  qzcRefresh();
+  const banner=document.getElementById('qzc-shared');
+  if(sharedCfg){
+    qzcApplyConfig(sharedCfg);
+    banner.classList.add('on');
+    qzcStart.classList.add('big');
+  }else{
+    QZC_GROUPS.forEach(g=>qzcUpdateGroupCount(g.key));
+    qzcRefresh();
+    banner.classList.remove('on');
+    qzcStart.classList.remove('big');
+  }
   qzcEl.classList.add('on');
 }
 function qzcClose(){qzcEl.classList.remove('on');}
@@ -1065,10 +1327,15 @@ qzcCarouselCb.addEventListener('change',()=>{
 });
 qzcStart.addEventListener('click',()=>{
   const pool=qzcBuildPool();
+  qzRunLabel=qzcDescribe();          // remember what this run was, for the result line
   const ok=qzcCarouselCb.checked?startCarouselQuiz(pool):startCustomQuiz(pool);
   if(ok)qzcClose();
 });
-document.getElementById('quizplus-btn').addEventListener('click',qzcOpen);
+// Copy a link that reopens this exact builder state on someone else's browser.
+document.getElementById('qzc-copy').addEventListener('click',()=>{
+  copyText(qzcShareURL(),document.getElementById('qzc-copy'),'✓ Link copied');
+});
+document.getElementById('quizplus-btn').addEventListener('click',()=>qzcOpen());
 document.getElementById('qzc-x').addEventListener('click',qzcClose);
 qzcEl.addEventListener('click',e=>{if(e.target===qzcEl)qzcClose();});
 document.addEventListener('keydown',e=>{
@@ -1076,6 +1343,20 @@ document.addEventListener('keydown',e=>{
 });
 
 renderIssues();render();
+
+// ── Shared-link entry point ───────────────────────────────────────────
+// If the page was opened with a #quiz=… fragment, open the Quiz+ builder
+// pre-filled with that configuration so the visitor can see it and hit Start.
+(function(){
+  const cfg=qzcSharedFromURL();
+  if(cfg)qzcOpen(cfg);
+})();
+// Re-open if the hash changes while the page is already loaded (e.g. the
+// visitor pastes a second link into the address bar without a full reload).
+window.addEventListener('hashchange',()=>{
+  const cfg=qzcSharedFromURL();
+  if(cfg&&!qzEl.classList.contains('on'))qzcOpen(cfg);
+});
 </script>
 </body>
 </html>
