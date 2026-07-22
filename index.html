@@ -279,14 +279,29 @@
   .qz-board{text-align:left;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:6px}
   .qz-board-h{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);
     background:var(--panel2);padding:7px 12px;display:flex;justify-content:space-between}
-  .qz-row{display:grid;grid-template-columns:28px 56px 1fr auto;gap:8px;align-items:center;
+  .qz-row{display:grid;grid-template-columns:28px 56px auto 1fr auto;gap:8px;align-items:center;
     padding:7px 12px;font-size:14px;border-top:1px solid var(--line)}
   .qz-row.me{background:#21301c;color:#cfe8c5}
   .qz-row .rk{color:var(--muted);font-size:12px}
   .qz-row .ini{font-weight:700;letter-spacing:.15em}
   .qz-row .sc{font-weight:600;color:var(--bronze-bright)}
   .qz-row.me .sc{color:#cfe8c5}
-  .qz-row .ctx{color:var(--muted);font-size:11px}
+  .qz-row .ctx{color:var(--muted);font-size:11px;
+    min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* Per-run longest streak, right-aligned on each row. */
+  .qz-row .stk{font-size:11px;color:var(--bronze-bright);border:1px solid var(--line);
+    border-radius:999px;padding:1px 7px;font-weight:600;justify-self:end}
+  .qz-row.me .stk{color:#cfe8c5}
+  /* Persistent all-time streak holder, above the high-score table. Kept in its
+     own storage key so it survives the top-N trimming of the score list. */
+  .qz-streak-lead{display:flex;align-items:baseline;gap:9px;
+    background:var(--panel2);border:1px solid var(--bronze);border-radius:9px;
+    padding:9px 12px;margin-bottom:10px}
+  .qz-streak-lead .lbl{font-size:10px;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--muted);flex:0 0 auto}
+  .qz-streak-lead .val{font-weight:700;color:var(--bronze-bright);font-size:15px;flex:0 0 auto}
+  .qz-streak-lead .ctx{font-size:11px;color:var(--muted);margin-left:auto;text-align:right;
+    min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .qz-board-empty{padding:12px;color:var(--muted);font-size:13px;text-align:center}
   .qz-results-foot{display:flex;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap}
   .qz-results-foot button{background:var(--bronze-btn);border:1px solid var(--bronze-btn);color:#000;
@@ -845,6 +860,7 @@ function startQuiz(){
     return;
   }
   qzDeck=qzShuffle(pool.slice()); qzIdx=0;
+  qzRunLabel=qzFilterDescribe();     // what this run was scoped to, for the board
   qzRight=0; qzTotal=0; qzStreak=0; qzSkips=0; qzSetLoading(false);
   qzBestStreak=0; qzByDecade={}; qzByMake={}; qzStartMs=Date.now(); qzCurrentRec=null;
   qzEl.classList.add('on');
@@ -1178,24 +1194,49 @@ function lbSetLastInitials(v){
   try{localStorage.setItem(QZ_LB_KEY+'_last',v);}catch(e){}
 }
 
+// Escape text before injecting it into innerHTML. Leaderboard context strings
+// are built from make/family names, which can legitimately contain & or <
+// (e.g. "Perks&Birch"), so they must not be pasted in raw.
+function esc(s){
+  return String(s==null?'':s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
 // Render the leaderboard table; highlightTs marks the row just saved.
+// Each row shows the constraints the run was played under ("Bike · 1930s")
+// rather than just the run kind, plus that run's longest streak.
 function renderBoard(highlightTs){
   const list=lbLoad().sort(lbRank).slice(0,QZ_LB_MAX);
   const board=document.getElementById('qz-board');
+  const rec=lbLoadStreak();
+  // Persistent streak leader — survives high-score trimming.
+  const streakBar=rec
+    ? `<div class="qz-streak-lead">
+         <span class="lbl">Longest streak</span>
+         <span class="val">${(rec.ini||'???').toUpperCase()} · ${rec.streak}</span>
+         ${rec.what?`<span class="ctx">${esc(rec.what)}</span>`:''}
+       </div>`
+    : '';
   if(!list.length){
-    board.innerHTML='<div class="qz-board-empty">No scores yet — be the first.</div>';
+    board.innerHTML=streakBar+'<div class="qz-board-empty">No scores yet — be the first.</div>';
     return;
   }
   const rows=list.map((e,i)=>{
     const me=highlightTs&&e.ts===highlightTs?' me':'';
+    // Prefer the recorded constraints; fall back to the run kind for entries
+    // saved before `what` existed.
+    const ctx=e.what?esc(e.what):(e.kind||'');
     return `<div class="qz-row${me}">
       <span class="rk">${i+1}</span>
       <span class="ini">${(e.ini||'???').toUpperCase()}</span>
       <span class="sc">${e.score}<span style="color:var(--muted);font-weight:400">/${e.total}</span></span>
-      <span class="ctx">${e.pct}% · ${e.kind||''}</span>
+      <span class="ctx">${e.pct}%${ctx?' · '+ctx:''}</span>
+      <span class="stk" title="Longest streak this run">${e.streak||0}</span>
     </div>`;
   }).join('');
-  board.innerHTML=`<div class="qz-board-h"><span>High scores</span><span>this browser</span></div>${rows}`;
+  board.innerHTML=streakBar+
+    `<div class="qz-board-h"><span>High scores</span><span>this browser</span></div>${rows}`;
 }
 
 // Save the pending result under the entered initials.
@@ -1205,18 +1246,42 @@ function saveScore(){
             .replace(/[^A-Z0-9]/g,'').slice(0,3);
   if(!ini)ini='AAA';
   lbSetLastInitials(ini);
+  // `what` records the constraints this run was played under (assets, vehicle
+  // types, decades, …) so the board says WHAT was quizzed, not just that it was
+  // a Custom run. Captured at run start into qzRunLabel.
   const entry={ini:ini,score:qzFinal.score,total:qzFinal.total,pct:qzFinal.pct,
-               kind:qzFinal.kind,ts:Date.now()};
+               kind:qzFinal.kind,what:qzRunLabel||'',streak:qzBestStreak,ts:Date.now()};
   const list=lbLoad(); list.push(entry);
   list.sort(lbRank);
   const trimmed=list.slice(0,QZ_LB_MAX);
   lbSave(trimmed);
+  // The streak record is kept OUTSIDE the top-scores list: a long streak in an
+  // otherwise middling run would otherwise be trimmed away and lost.
+  lbRecordStreak(entry);
   qzPendingSaved=true;
   // Hide the entry controls, keep the board with this run highlighted.
   document.getElementById('qz-initials').style.display='none';
   document.getElementById('qz-save').style.display='none';
   document.getElementById('qz-newhigh').style.display='none';
   renderBoard(entry.ts);
+}
+
+// ── All-time longest streak ───────────────────────────────────────────
+// Stored under its own key and only ever replaced by a strictly longer run,
+// so it persists independently of the high-score table's top-N trimming.
+const QZ_STREAK_KEY=QZ_LB_KEY+'_streak';
+function lbLoadStreak(){
+  try{const raw=localStorage.getItem(QZ_STREAK_KEY);return raw?JSON.parse(raw):null;}
+  catch(e){return null;}
+}
+function lbRecordStreak(entry){
+  if(!entry||!entry.streak)return false;
+  const cur=lbLoadStreak();
+  if(cur&&cur.streak>=entry.streak)return false;   // ties keep the earlier holder
+  try{localStorage.setItem(QZ_STREAK_KEY,JSON.stringify({
+    ini:entry.ini,streak:entry.streak,what:entry.what||'',
+    kind:entry.kind||'',ts:entry.ts}));}catch(e){}
+  return true;
 }
 
 function qzClose(){
@@ -1431,6 +1496,23 @@ function qzcDescribe(){
   return bits.length?bits.join(' · '):'All renders';
 }
 let qzRunLabel='';   // description captured when a run starts, shown on results
+
+// Describe the ACTIVE SIDEBAR FILTERS, for runs started via Quiz ▸ Start Quiz.
+// The Quiz+ builder has its own describer (qzcDescribe); this is the live-quiz
+// equivalent so the leaderboard can say "Bike · 1930s" instead of just "Quiz".
+function qzFilterDescribe(){
+  const bits=[];
+  if(fAsset.value)  bits.push(ASSET_LABELS[fAsset.value]||fAsset.value);
+  if(fMake.value)   bits.push(fMake.value);
+  if(fType.value)   bits.push(fType.value);
+  if(fBody.value)   bits.push(fBody.value);
+  if(fFamily.value) bits.push(fFamily.value);
+  if(fCountry.value)bits.push(fCountry.value);
+  if(fDecade.value) bits.push(fDecade.value);
+  const q=(document.getElementById('q').value||'').trim();
+  if(q)bits.push('"'+q+'"');
+  return bits.length?bits.join(' · '):'All renders';
+}
 
 // ── Quiz+ Builder ─────────────────────────────────────────────────────
 // Opens a config modal with several facet groups (Decades, Vehicle Types,
