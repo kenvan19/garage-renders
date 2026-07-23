@@ -118,6 +118,12 @@
   .qz-top{display:flex;align-items:center;justify-content:space-between;padding-right:44px;margin-bottom:10px}
   .qz-title{font-weight:700;color:var(--bronze-bright)}
   .qz-score{color:var(--muted);font-size:13px}
+  /* Right-hand header group: score + the mid-run Restart. Kept up here, away
+     from the answer options and Next, so it can't be hit by a stray click. */
+  .qz-topright{display:flex;align-items:center;gap:10px}
+  .qz-restart{background:none;border:1px solid var(--line);color:var(--muted);
+    font:inherit;font-size:12px;padding:3px 9px;border-radius:6px;cursor:pointer;line-height:1.4}
+  .qz-restart:hover{border-color:var(--bronze);color:var(--ink)}
   .qz-img{background:#0e0c0a;border:1px solid var(--line);border-radius:10px;overflow:hidden;
     display:flex;align-items:center;justify-content:center;height:min(64vh,640px);position:relative}
   .qz-img img{max-width:100%;max-height:100%;object-fit:contain;display:block}
@@ -365,7 +371,10 @@
     <span class="x" id="qz-x">×</span>
     <div class="qz-top">
       <span class="qz-title">Guess it</span>
-      <span class="qz-score" id="qz-score"></span>
+      <span class="qz-topright">
+        <span class="qz-score" id="qz-score"></span>
+        <button class="qz-restart" id="qz-restart" title="Abandon this run and start the same quiz over, reshuffled">↻ Restart</button>
+      </span>
     </div>
     <div class="qz-carousel" id="qz-carousel"></div>
     <div id="qz-play">
@@ -394,7 +403,6 @@
       <div class="qz-results-foot">
         <button id="qz-save">Save score</button>
         <button class="ghost" id="qz-copyresult" title="Copy your score to paste back to whoever shared this">Copy result</button>
-        <button class="ghost" id="qz-restart" title="Replay this exact quiz with the questions reshuffled">Restart</button>
         <button class="ghost" id="qz-again">Play again</button>
         <button class="ghost" id="qz-done">Done</button>
       </div>
@@ -1350,18 +1358,27 @@ document.getElementById('qz-copyresult').addEventListener('click',()=>{
   }
   copyText(lines.join('\n'),document.getElementById('qz-copyresult'),'✓ Copied');
 });
-// Restart: replay the SAME run — same pool, same length, same mode — with the
-// deck reshuffled and every counter reset. Falls back to the builder if the
-// recipe is somehow missing (e.g. a results panel restored from an odd state).
+// Mid-run Restart: abandon the run in progress and immediately deal a fresh one
+// from the SAME recipe — same pool, same length, same mode — reshuffled. Every
+// counter resets because the starter functions already do that.
+//
+// Deliberately NOT scored: an abandoned run never reaches finishRun(), so a
+// bailed-out attempt can't land a junk row on the leaderboard. Its partial
+// stats are discarded silently — that's the point of bailing.
+//
+// qzQToken is bumped first so an image still in flight for the old question
+// can't paint over the first card of the new run.
 document.getElementById('qz-restart').addEventListener('click',()=>{
   const r=qzLastRun;
-  if(!r){qzClose();qzcOpen();return;}
+  qzQToken++;
   qzPendingSaved=false;
+  if(!r){qzClose();qzcOpen();return;}
   if(r.mode==='live'){ startQuiz(); return; }
   const ok = r.mode==='carousel' ? startCarouselQuiz(r.pool,r.len)
                                  : startCustomQuiz(r.pool,r.len);
   if(!ok){ qzClose(); qzcOpen(); }
 });
+
 document.getElementById('qz-again').addEventListener('click',()=>{
   // Re-open the builder to start a fresh run (results came from a custom run).
   qzClose(); qzcOpen();
