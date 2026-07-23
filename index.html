@@ -394,6 +394,7 @@
       <div class="qz-results-foot">
         <button id="qz-save">Save score</button>
         <button class="ghost" id="qz-copyresult" title="Copy your score to paste back to whoever shared this">Copy result</button>
+        <button class="ghost" id="qz-restart" title="Replay this exact quiz with the questions reshuffled">Restart</button>
         <button class="ghost" id="qz-again">Play again</button>
         <button class="ghost" id="qz-done">Done</button>
       </div>
@@ -815,6 +816,12 @@ let qzCustomCap=100;     // total questions in a narrowed (non-carousel) run
 // The board is keyed by run kind so carousel and narrowed scores read clearly
 // side by side. Score is "correct" count; ties break by best percentage.
 let qzRunCtx=null;
+// The recipe for the run currently loaded, so Restart can rebuild an identical
+// run with a fresh shuffle without going back through the builder.
+//   {mode:'live'} | {mode:'custom',pool:[...],len:n} | {mode:'carousel',pool:[...],len:n}
+// The pool array is captured by reference at start time; the builder always
+// hands over a freshly built array, so it stays stable for the run's lifetime.
+let qzLastRun=null;
 let qzAsked=0;           // questions asked in the CURRENT scored run (drives qzCustomCap)
 let qzPendingSaved=false;// guard so a result is only written once
 const QZ_LB_KEY='garageQuizScores_v1';
@@ -853,6 +860,7 @@ function startQuiz(){
   // Legacy live-filter quiz: clear any Quiz+ custom/carousel state first.
   qzCustom=null; qzCarousel=null; qzCarouselEl.classList.remove('on');
   qzRunCtx=null; qzAsked=0;          // legacy runs are NOT scored
+  qzLastRun={mode:'live'};           // Restart re-shuffles under the same filters
   showQuizPlay();
   const pool=qzPool();
   if([...new Set(pool.map(quizLabel))].length<2){
@@ -879,6 +887,7 @@ function startCustomQuiz(pool,len){
   }
   qzCustomCap=Math.max(1,Math.min(len||QUIZ_LENGTHS[0],deckPool.length));
   qzRunCtx={kind:'Custom'}; qzAsked=0;    // scored; capped at qzCustomCap
+  qzLastRun={mode:'custom',pool:pool,len:len};
   showQuizPlay();
   qzDeck=qzShuffle(deckPool.slice()); qzIdx=0;
   qzRight=0; qzTotal=0; qzStreak=0; qzSkips=0; qzSetLoading(false);
@@ -897,6 +906,7 @@ function startCarouselQuiz(pool,len){
   qzCustom={pool:pool};
   qzCarousel={decades:decades,di:0,asked:0,cap:0};
   qzRunCtx={kind:'Carousel'}; qzAsked=0;   // scored; ends when decades run out
+  qzLastRun={mode:'carousel',pool:pool,len:len};
   showQuizPlay();
   qzRight=0; qzTotal=0; qzStreak=0; qzSkips=0; qzSetLoading(false);
   qzBestStreak=0; qzByDecade={}; qzByMake={}; qzStartMs=Date.now(); qzCurrentRec=null;
@@ -1339,6 +1349,18 @@ document.getElementById('qz-copyresult').addEventListener('click',()=>{
     lines.push(`Best: ${bw.best.make} ${bw.best.right}/${bw.best.total} · Weakest: ${bw.worst.make} ${bw.worst.right}/${bw.worst.total}`);
   }
   copyText(lines.join('\n'),document.getElementById('qz-copyresult'),'✓ Copied');
+});
+// Restart: replay the SAME run — same pool, same length, same mode — with the
+// deck reshuffled and every counter reset. Falls back to the builder if the
+// recipe is somehow missing (e.g. a results panel restored from an odd state).
+document.getElementById('qz-restart').addEventListener('click',()=>{
+  const r=qzLastRun;
+  if(!r){qzClose();qzcOpen();return;}
+  qzPendingSaved=false;
+  if(r.mode==='live'){ startQuiz(); return; }
+  const ok = r.mode==='carousel' ? startCarouselQuiz(r.pool,r.len)
+                                 : startCustomQuiz(r.pool,r.len);
+  if(!ok){ qzClose(); qzcOpen(); }
 });
 document.getElementById('qz-again').addEventListener('click',()=>{
   // Re-open the builder to start a fresh run (results came from a custom run).
